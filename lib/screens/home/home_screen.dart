@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:eye_strain/services/auth_service.dart';
 import 'package:eye_strain/screens/history/history_screen.dart';
 import 'package:eye_strain/screens/profile/profile_screen.dart';
+import 'package:eye_strain/services/eye_strain_service.dart';
 
 /// HomeScreen is the main screen of the app where users can take photos
 class HomeScreen extends StatefulWidget {
@@ -20,6 +22,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isProcessing = false;
   String? _result;
   File? _capturedImage;
+  bool _isAnalyzing = false;
+  final _eyeStrainService = EyeStrainService();
+
+  // Demo analysis results
+  final List<String> _possibleResults = [
+    'Take a Break! Your eyes show signs of strain.',
+    'Continue Working. No significant eye strain detected.',
+    'Mild eye strain detected. Consider a short break soon.',
+  ];
 
   @override
   void initState() {
@@ -95,6 +106,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Simulate eye strain analysis for demo purposes
+  Future<void> _analyzeEyeStrain() async {
+    setState(() {
+      _isAnalyzing = true;
+      _result = 'Analyzing your eye strain...';
+    });
+
+    // Simulate analysis delay (3 seconds)
+    await Future.delayed(const Duration(seconds: 3));
+
+    // Generate a random result for demo
+    final random = Random();
+    final resultIndex = random.nextInt(_possibleResults.length);
+    final analysisResult = _possibleResults[resultIndex];
+
+    // Save result to history using EyeStrainService
+    final userId = context.read<AuthService>().currentUser?.uid;
+    if (userId != null && _capturedImage != null) {
+      try {
+        await _eyeStrainService.saveDemoEyeCheck(
+          userId: userId,
+          result: analysisResult,
+          imagePath: _capturedImage!.path,
+        );
+        debugPrint('Result saved to history');
+      } catch (e) {
+        debugPrint('Error saving to history: $e');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _result = analysisResult;
+        _isAnalyzing = false;
+        _isProcessing = false;
+      });
+    }
+  }
+
   Future<void> _takePicture() async {
     if (!_isCameraInitialized || _isProcessing) return;
 
@@ -105,10 +155,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       setState(() {
         _capturedImage = File(image.path);
-        _result =
-            'Photo captured! In a real app, this would analyze your eye strain.';
-        _isProcessing = false;
       });
+
+      // Start analysis after capturing image
+      await _analyzeEyeStrain();
     } catch (e) {
       setState(() {
         _result = 'Error taking picture: $e';
@@ -173,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'This is a simplified demo version. In the full app, we would analyze your eye strain levels using advanced computer vision.',
+                        'This is a simplified demo version. Take a photo and we\'ll analyze your eye strain in 3 seconds.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -231,10 +281,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (_result != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        _result!,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                        textAlign: TextAlign.center,
+                      child: Column(
+                        children: [
+                          if (_isAnalyzing)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 12.0),
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            _result!,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyLarge?.copyWith(
+                              fontWeight:
+                                  _isAnalyzing
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
+                              color:
+                                  _result!.contains('Take a Break')
+                                      ? Colors.red
+                                      : _result!.contains('Continue Working')
+                                      ? Colors.green
+                                      : null,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
 
@@ -242,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_capturedImage != null) ...[
+                      if (_capturedImage != null && !_isAnalyzing) ...[
                         OutlinedButton.icon(
                           onPressed: () {
                             setState(() {
@@ -256,10 +334,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const SizedBox(width: 16),
                       ],
                       FilledButton.icon(
-                        onPressed: _isProcessing ? null : _takePicture,
+                        onPressed:
+                            (_isProcessing || _isAnalyzing)
+                                ? null
+                                : _takePicture,
                         icon: const Icon(Icons.camera_alt),
                         label:
-                            _isProcessing
+                            (_isProcessing || _isAnalyzing)
                                 ? const SizedBox(
                                   height: 20,
                                   width: 20,

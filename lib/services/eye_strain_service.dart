@@ -39,11 +39,12 @@ class EyeStrainService {
       double averageDecline = 0;
       for (int i = 0; i < last3Checks.length - 1; i++) {
         final current =
-            (last3Checks[i].leftEyeOpenness + last3Checks[i].rightEyeOpenness) /
+            ((last3Checks[i].leftEyeOpenness ?? 0.5) +
+                (last3Checks[i].rightEyeOpenness ?? 0.5)) /
             2;
         final next =
-            (last3Checks[i + 1].leftEyeOpenness +
-                last3Checks[i + 1].rightEyeOpenness) /
+            ((last3Checks[i + 1].leftEyeOpenness ?? 0.5) +
+                (last3Checks[i + 1].rightEyeOpenness ?? 0.5)) /
             2;
         averageDecline += current - next;
       }
@@ -102,6 +103,10 @@ class EyeStrainService {
         rightEyeOpenness: rightEyeOpenness,
         needsBreak: needsBreak,
         localImagePath: localImagePath,
+        result:
+            needsBreak
+                ? 'Take a Break! Your eyes show signs of strain.'
+                : 'Continue Working. No significant eye strain detected.',
       );
 
       // Save to Firestore
@@ -118,6 +123,55 @@ class EyeStrainService {
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Save eye check error: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Save demo eye check result to Firestore and local storage
+  Future<void> saveDemoEyeCheck({
+    required String userId,
+    required String result,
+    required String imagePath,
+  }) async {
+    try {
+      final directory = await _localDir;
+      final timestamp = DateTime.now();
+      final id = _uuid.v4();
+
+      // Copy image to local storage if it exists
+      String localImagePath = '';
+      if (imagePath.isNotEmpty) {
+        final imageName = '${timestamp.millisecondsSinceEpoch}.jpg';
+        localImagePath = '${directory.path}/$imageName';
+        await File(imagePath).copy(localImagePath);
+      }
+
+      // Determine if break is needed based on result text
+      final needsBreak =
+          result.contains('Take a Break') || result.contains('break soon');
+
+      // Create eye check
+      final eyeCheck = EyeCheck(
+        id: id,
+        userId: userId,
+        timestamp: timestamp,
+        needsBreak: needsBreak,
+        localImagePath: localImagePath,
+        result: result,
+      );
+
+      // Save to Firestore
+      await _firestore
+          .collection('eye_checks')
+          .doc(id)
+          .set(eyeCheck.toFirestore());
+
+      // Save to local storage
+      await _saveLocalEyeCheck(eyeCheck);
+    } catch (e) {
+      if (kDebugMode) {
+        print('[EyeStrainService] Save demo eye check error: $e');
       }
       rethrow;
     }

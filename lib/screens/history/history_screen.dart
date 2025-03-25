@@ -85,7 +85,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         size: 32,
                       ),
                       title: Text(
-                        check.needsBreak ? 'Break Needed' : 'Eyes Looking Good',
+                        check.result.isNotEmpty
+                            ? check.result
+                            : check.needsBreak
+                            ? 'Break Needed'
+                            : 'Eyes Looking Good',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       subtitle: Text(
