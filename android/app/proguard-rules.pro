@@ -11,6 +11,9 @@
 # Keep MLKit classes
 -keep class com.google.mlkit.** { *; }
 
+# Keep Google Play Core classes
+-keep class com.google.android.play.core.** { *; }
+
 # Keep native libraries
 -keepclasseswithmembernames class * {
     native <methods>;

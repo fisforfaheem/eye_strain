@@ -4,17 +4,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:eye_strain/models/eye_check.dart';
+import 'package:eye_strain/services/face_detection_service.dart';
 import 'package:uuid/uuid.dart';
 
 /// Service to handle eye strain detection and history
 class EyeStrainService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final _uuid = const Uuid();
+  final _faceDetectionService = FaceDetectionService();
 
   // Constants for eye strain detection
   static const double _severeStrainThreshold = 0.4;
   static const double _moderateStrainThreshold = 0.6;
-  static const double _minConfidenceThreshold = 0.7;
   static const int _minSampleCount = 3;
 
   /// Analyze eye strain based on multiple factors
@@ -120,6 +121,76 @@ class EyeStrainService {
 
       // Delete temp image
       await File(tempImagePath).delete();
+    } catch (e) {
+      if (kDebugMode) {
+        print('[EyeStrainService] Save eye check error: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Analyze eye strain using ML Kit face detection
+  Future<Map<String, dynamic>> analyzeEyeStrainWithMlKit(
+    String imagePath,
+  ) async {
+    try {
+      // Use the face detection service to analyze the image
+      final analysisResult = await _faceDetectionService.analyzeEyeStrain(
+        imagePath,
+      );
+
+      if (!analysisResult['success']) {
+        return analysisResult;
+      }
+
+      return analysisResult;
+    } catch (e) {
+      if (kDebugMode) {
+        print('[EyeStrainService] ML Kit analysis error: $e');
+      }
+      return {'success': false, 'message': 'Error analyzing eye strain: $e'};
+    }
+  }
+
+  /// Save eye check result from ML Kit analysis to Firestore and local storage
+  Future<void> saveEyeCheckFromAnalysis({
+    required String userId,
+    required String imagePath,
+    required Map<String, dynamic> analysisResult,
+  }) async {
+    try {
+      final directory = await _localDir;
+      final timestamp = DateTime.now();
+      final id = _uuid.v4();
+
+      // Copy image to local storage
+      final imageName = '${timestamp.millisecondsSinceEpoch}.jpg';
+      final localImagePath = '${directory.path}/$imageName';
+      await File(imagePath).copy(localImagePath);
+
+      // Create eye check
+      final eyeCheck = EyeCheck(
+        id: id,
+        userId: userId,
+        timestamp: timestamp,
+        leftEyeOpenness: analysisResult['leftEyeOpenness'],
+        rightEyeOpenness: analysisResult['rightEyeOpenness'],
+        needsBreak: analysisResult['needsBreak'],
+        localImagePath: localImagePath,
+        result: analysisResult['message'],
+      );
+
+      // Save to Firestore
+      await _firestore
+          .collection('eye_checks')
+          .doc(id)
+          .set(eyeCheck.toFirestore());
+
+      // Save to local storage
+      await _saveLocalEyeCheck(eyeCheck);
+
+      // Delete temp image
+      await File(imagePath).delete();
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Save eye check error: $e');
@@ -263,5 +334,10 @@ class EyeStrainService {
       }
       return [];
     }
+  }
+
+  /// Dispose of resources
+  void dispose() {
+    _faceDetectionService.dispose();
   }
 }

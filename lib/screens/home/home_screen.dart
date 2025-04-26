@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:eye_strain/services/auth_service.dart';
@@ -25,13 +25,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isAnalyzing = false;
   final _eyeStrainService = EyeStrainService();
 
-  // Demo analysis results
-  final List<String> _possibleResults = [
-    'Take a Break! Your eyes show signs of strain.',
-    'Continue Working. No significant eye strain detected.',
-    'Mild eye strain detected. Consider a short break soon.',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -43,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
+    _eyeStrainService.dispose();
     super.dispose();
   }
 
@@ -106,42 +100,91 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Simulate eye strain analysis for demo purposes
+  // Analyze eye strain using ML Kit
   Future<void> _analyzeEyeStrain() async {
     setState(() {
       _isAnalyzing = true;
       _result = 'Analyzing your eye strain...';
     });
 
-    // Simulate analysis delay (3 seconds)
-    await Future.delayed(const Duration(seconds: 3));
-
-    // Generate a random result for demo
-    final random = Random();
-    final resultIndex = random.nextInt(_possibleResults.length);
-    final analysisResult = _possibleResults[resultIndex];
-
-    // Save result to history using EyeStrainService
     final userId = context.read<AuthService>().currentUser?.uid;
-    if (userId != null && _capturedImage != null) {
-      try {
-        await _eyeStrainService.saveDemoEyeCheck(
-          userId: userId,
-          result: analysisResult,
-          imagePath: _capturedImage!.path,
-        );
-        debugPrint('Result saved to history');
-      } catch (e) {
-        debugPrint('Error saving to history: $e');
-      }
-    }
-
-    if (mounted) {
+    if (userId == null || _capturedImage == null) {
       setState(() {
-        _result = analysisResult;
+        _result = 'Error: User not logged in or image not captured';
         _isAnalyzing = false;
         _isProcessing = false;
       });
+      return;
+    }
+
+    try {
+      // Use ML Kit to analyze eye strain
+      final analysisResult = await _eyeStrainService.analyzeEyeStrainWithMlKit(
+        _capturedImage!.path,
+      );
+
+      if (!analysisResult['success']) {
+        // Handle analysis failure
+        setState(() {
+          _result = analysisResult['message'];
+          _isAnalyzing = false;
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      // Verify the user is still logged in before saving to Firestore
+      final currentUser = context.read<AuthService>().currentUser;
+      if (currentUser == null) {
+        setState(() {
+          _result = 'Error: User session expired. Please log in again.';
+          _isAnalyzing = false;
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      try {
+        // Save the analysis result to history
+        await _eyeStrainService.saveEyeCheckFromAnalysis(
+          userId: userId,
+          imagePath: _capturedImage!.path,
+          analysisResult: analysisResult,
+        );
+      } catch (firestoreError) {
+        // Handle Firestore errors but still show the analysis result
+        if (kDebugMode) {
+          print('Error saving to Firestore: $firestoreError');
+        }
+
+        if (mounted) {
+          setState(() {
+            _result =
+                analysisResult['message'] +
+                '\n\nNote: Could not save to history. ${firestoreError.toString().contains('permission-denied') ? 'Permission denied.' : ''}';
+            _isAnalyzing = false;
+            _isProcessing = false;
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _result = analysisResult['message'];
+          _isAnalyzing = false;
+          _isProcessing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _result = 'Error analyzing eye strain: $e';
+          _isAnalyzing = false;
+          _isProcessing = false;
+        });
+      }
+      debugPrint('Error in eye strain analysis: $e');
     }
   }
 
@@ -171,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EyeGuard Demo'),
+        title: const Text('EyeGuard'),
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -210,12 +253,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Row(
                         children: [
                           Icon(
-                            Icons.info_outline,
+                            Icons.remove_red_eye,
                             color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Demo Mode',
+                            'Eye Strain Detection',
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
@@ -223,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'This is a simplified demo version. Take a photo and we\'ll analyze your eye strain in 3 seconds.',
+                        'Take a photo to analyze your eye strain using advanced face detection technology.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -244,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withAlpha(51), // 0.2 * 255 = ~51
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -294,23 +337,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 ),
                               ),
                             ),
-                          Text(
-                            _result!,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyLarge?.copyWith(
-                              fontWeight:
-                                  _isAnalyzing
-                                      ? FontWeight.normal
-                                      : FontWeight.bold,
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
                               color:
                                   _result!.contains('Take a Break')
-                                      ? Colors.red
+                                      ? Colors.red.withAlpha(30)
                                       : _result!.contains('Continue Working')
-                                      ? Colors.green
-                                      : null,
+                                      ? Colors.green.withAlpha(30)
+                                      : Colors.orange.withAlpha(30),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            textAlign: TextAlign.center,
+                            child: Column(
+                              children: [
+                                Icon(
+                                  _result!.contains('Take a Break')
+                                      ? Icons.warning_rounded
+                                      : _result!.contains('Continue Working')
+                                      ? Icons.check_circle_outline
+                                      : Icons.info_outline,
+                                  color:
+                                      _result!.contains('Take a Break')
+                                          ? Colors.red
+                                          : _result!.contains(
+                                            'Continue Working',
+                                          )
+                                          ? Colors.green
+                                          : Colors.orange,
+                                  size: 32,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _result!,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.copyWith(
+                                    fontWeight:
+                                        _isAnalyzing
+                                            ? FontWeight.normal
+                                            : FontWeight.bold,
+                                    color:
+                                        _result!.contains('Take a Break')
+                                            ? Colors.red
+                                            : _result!.contains(
+                                              'Continue Working',
+                                            )
+                                            ? Colors.green
+                                            : Colors.orange,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
