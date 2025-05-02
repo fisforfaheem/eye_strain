@@ -296,14 +296,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child:
                         _isCameraInitialized
                             ? _capturedImage != null
-                                ? Image.file(_capturedImage!, fit: BoxFit.cover)
+                                ? Transform(
+                                  alignment: Alignment.center,
+                                  transform:
+                                      Matrix4.identity()..scale(-1.0, 1.0, 1.0),
+                                  child: Image.file(
+                                    _capturedImage!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
                                 : AspectRatio(
                                   aspectRatio: 1,
                                   child: ClipRect(
                                     child: Transform.scale(
                                       scale: 1.0,
                                       child: Center(
-                                        child: CameraPreview(_controller!),
+                                        // Apply horizontal flip for front camera preview
+                                        child: Transform(
+                                          alignment: Alignment.center,
+                                          transform:
+                                              Matrix4.identity()
+                                                ..scale(-1.0, 1.0, 1.0),
+                                          child: CameraPreview(_controller!),
+                                        ),
                                       ),
                                     ),
                                   ),
