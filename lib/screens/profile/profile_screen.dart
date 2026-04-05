@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:eye_strain/services/auth_service.dart';
-import 'package:eye_strain/services/eye_strain_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 

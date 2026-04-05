@@ -102,12 +102,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // Analyze eye strain using ML Kit
   Future<void> _analyzeEyeStrain() async {
+    final authService = context.read<AuthService>();
+
     setState(() {
       _isAnalyzing = true;
       _result = 'Analyzing your eye strain...';
     });
 
-    final userId = context.read<AuthService>().currentUser?.uid;
+    final userId = authService.currentUser?.uid;
     if (userId == null || _capturedImage == null) {
       setState(() {
         _result = 'Error: User not logged in or image not captured';
@@ -134,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // Verify the user is still logged in before saving to Firestore
-      final currentUser = context.read<AuthService>().currentUser;
+      final currentUser = authService.currentUser;
       if (currentUser == null) {
         setState(() {
           _result = 'Error: User session expired. Please log in again.';

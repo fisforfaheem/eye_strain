@@ -9,12 +9,9 @@ class AppTheme {
   // Brand Colors
   static const Color _primaryColor = Color(0xFF007AFF);
   static const Color _secondaryColor = Color(0xFF5856D6);
-  static const Color _accentColor = Color(0xFF34C759);
 
   // Semantic Colors
-  static const Color _warningColor = Color(0xFFFF9500);
   static const Color _errorColor = Color(0xFFFF3B30);
-  static const Color _successColor = Color(0xFF34C759);
 
   /// Light theme configuration
   static final ThemeData lightTheme = ThemeData(
@@ -59,7 +56,7 @@ class AppTheme {
     ),
 
     // Card Theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: Colors.white,
@@ -121,7 +118,7 @@ class AppTheme {
     ),
 
     // Card Theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: Colors.grey[850],
