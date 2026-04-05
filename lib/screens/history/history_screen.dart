@@ -123,8 +123,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           );
 
                           if (confirmed == true) {
-                            await _eyeStrainService.deleteEyeCheck(check);
-                            _loadHistory(); // Reload the list
+                            final deleteResult = await _eyeStrainService
+                                .deleteEyeCheck(check);
+                            await _loadHistory();
+
+                            if (!context.mounted) return;
+
+                            if (!deleteResult.deletedFromCloud) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    deleteResult.cloudErrorMessage ??
+                                        'Deleted on this device, but the cloud delete failed.',
+                                  ),
+                                ),
+                              );
+                            }
                           }
                         },
                       ),

@@ -7,6 +7,28 @@ import 'package:eye_strain/models/eye_check.dart';
 import 'package:eye_strain/services/face_detection_service.dart';
 import 'package:uuid/uuid.dart';
 
+class EyeCheckSaveResult {
+  final EyeCheck eyeCheck;
+  final bool savedToCloud;
+  final String? cloudErrorMessage;
+
+  const EyeCheckSaveResult({
+    required this.eyeCheck,
+    required this.savedToCloud,
+    this.cloudErrorMessage,
+  });
+}
+
+class EyeCheckDeleteResult {
+  final bool deletedFromCloud;
+  final String? cloudErrorMessage;
+
+  const EyeCheckDeleteResult({
+    required this.deletedFromCloud,
+    this.cloudErrorMessage,
+  });
+}
+
 /// Service to handle eye strain detection and history
 class EyeStrainService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -78,7 +100,7 @@ class EyeStrainService {
   }
 
   /// Save eye check result to Firestore and local storage
-  Future<void> saveEyeCheck({
+  Future<EyeCheckSaveResult> saveEyeCheck({
     required String userId,
     required double leftEyeOpenness,
     required double rightEyeOpenness,
@@ -110,17 +132,33 @@ class EyeStrainService {
                 : 'Continue Working. No significant eye strain detected.',
       );
 
-      // Save to Firestore
-      await _firestore
-          .collection('eye_checks')
-          .doc(id)
-          .set(eyeCheck.toFirestore());
-
       // Save to local storage
       await _saveLocalEyeCheck(eyeCheck);
 
+      bool savedToCloud = false;
+      String? cloudErrorMessage;
+
+      try {
+        await _firestore
+            .collection('eye_checks')
+            .doc(id)
+            .set(eyeCheck.toFirestore());
+        savedToCloud = true;
+      } catch (e) {
+        cloudErrorMessage = _formatCloudError(e);
+        if (kDebugMode) {
+          print('[EyeStrainService] Cloud save error: $e');
+        }
+      }
+
       // Delete temp image
       await File(tempImagePath).delete();
+
+      return EyeCheckSaveResult(
+        eyeCheck: eyeCheck,
+        savedToCloud: savedToCloud,
+        cloudErrorMessage: cloudErrorMessage,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Save eye check error: $e');
@@ -153,7 +191,7 @@ class EyeStrainService {
   }
 
   /// Save eye check result from ML Kit analysis to Firestore and local storage
-  Future<void> saveEyeCheckFromAnalysis({
+  Future<EyeCheckSaveResult> saveEyeCheckFromAnalysis({
     required String userId,
     required String imagePath,
     required Map<String, dynamic> analysisResult,
@@ -180,17 +218,33 @@ class EyeStrainService {
         result: analysisResult['message'],
       );
 
-      // Save to Firestore
-      await _firestore
-          .collection('eye_checks')
-          .doc(id)
-          .set(eyeCheck.toFirestore());
-
       // Save to local storage
       await _saveLocalEyeCheck(eyeCheck);
 
+      bool savedToCloud = false;
+      String? cloudErrorMessage;
+
+      try {
+        await _firestore
+            .collection('eye_checks')
+            .doc(id)
+            .set(eyeCheck.toFirestore());
+        savedToCloud = true;
+      } catch (e) {
+        cloudErrorMessage = _formatCloudError(e);
+        if (kDebugMode) {
+          print('[EyeStrainService] Cloud save error: $e');
+        }
+      }
+
       // Delete temp image
       await File(imagePath).delete();
+
+      return EyeCheckSaveResult(
+        eyeCheck: eyeCheck,
+        savedToCloud: savedToCloud,
+        cloudErrorMessage: cloudErrorMessage,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Save eye check error: $e');
@@ -200,7 +254,7 @@ class EyeStrainService {
   }
 
   /// Save demo eye check result to Firestore and local storage
-  Future<void> saveDemoEyeCheck({
+  Future<EyeCheckSaveResult> saveDemoEyeCheck({
     required String userId,
     required String result,
     required String imagePath,
@@ -232,14 +286,30 @@ class EyeStrainService {
         result: result,
       );
 
-      // Save to Firestore
-      await _firestore
-          .collection('eye_checks')
-          .doc(id)
-          .set(eyeCheck.toFirestore());
-
       // Save to local storage
       await _saveLocalEyeCheck(eyeCheck);
+
+      bool savedToCloud = false;
+      String? cloudErrorMessage;
+
+      try {
+        await _firestore
+            .collection('eye_checks')
+            .doc(id)
+            .set(eyeCheck.toFirestore());
+        savedToCloud = true;
+      } catch (e) {
+        cloudErrorMessage = _formatCloudError(e);
+        if (kDebugMode) {
+          print('[EyeStrainService] Cloud save error: $e');
+        }
+      }
+
+      return EyeCheckSaveResult(
+        eyeCheck: eyeCheck,
+        savedToCloud: savedToCloud,
+        cloudErrorMessage: cloudErrorMessage,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Save demo eye check error: $e');
@@ -284,11 +354,8 @@ class EyeStrainService {
   }
 
   /// Delete eye check from both Firestore and local storage
-  Future<void> deleteEyeCheck(EyeCheck eyeCheck) async {
+  Future<EyeCheckDeleteResult> deleteEyeCheck(EyeCheck eyeCheck) async {
     try {
-      // Delete from Firestore
-      await _firestore.collection('eye_checks').doc(eyeCheck.id).delete();
-
       // Delete image file
       final imageFile = File(eyeCheck.localImagePath);
       if (await imageFile.exists()) {
@@ -304,6 +371,24 @@ class EyeStrainService {
         checks.removeWhere((check) => check['id'] == eyeCheck.id);
         await file.writeAsString(jsonEncode(checks));
       }
+
+      bool deletedFromCloud = false;
+      String? cloudErrorMessage;
+
+      try {
+        await _firestore.collection('eye_checks').doc(eyeCheck.id).delete();
+        deletedFromCloud = true;
+      } catch (e) {
+        cloudErrorMessage = _formatCloudError(e);
+        if (kDebugMode) {
+          print('[EyeStrainService] Cloud delete error: $e');
+        }
+      }
+
+      return EyeCheckDeleteResult(
+        deletedFromCloud: deletedFromCloud,
+        cloudErrorMessage: cloudErrorMessage,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('[EyeStrainService] Delete eye check error: $e');
@@ -339,5 +424,13 @@ class EyeStrainService {
   /// Dispose of resources
   void dispose() {
     _faceDetectionService.dispose();
+  }
+
+  String _formatCloudError(Object error) {
+    if (error is FirebaseException && error.code == 'permission-denied') {
+      return 'Saved on this device, but the cloud save was denied.';
+    }
+
+    return 'Saved on this device, but the cloud sync failed.';
   }
 }
